@@ -17,20 +17,29 @@ static int numTCP = 0;
 static int numUDP = 0;
 static int numOther = 0;
 
-static int connNum = 1;
+
 /*         
 => metaInfo:init_numPk, resp_numPk,  
             init_numBt, resp_numBt, init_Dup, resp_Dup, 
             closed 
 */
+static int connNum = 1;
+
+
 unordered_map<string, vector<int> > metaInfo;
 //(init + resp + connNum) => (meta information)
+
 unordered_map<string, map<int, pair<bool, string> > > init;
 unordered_map<string, map<int, pair<bool, string> > > resp;
 //(init + resp + connNum) => (seq -> (ACKed, payload))
+
 unordered_map<string, int> curSession;
-//use for knowing which session it is currently in
-//also can know whether some 
+//
+
+
+
+
+
 
 struct tcp_pseudo /*the tcp pseudo header*/
 {
@@ -60,7 +69,7 @@ uint16_t getChecksum (const uint16_t * addr, unsigned len, uint16_t cm) {
 }
 
 string getMacAdress(const struct ether_header * etherHead, string type){
-   char * s_addr = NULL;
+   char * s_addr = 0;
    struct ether_addr Ad;
    if(type == "source") memcpy(&Ad, etherHead -> ether_shost, sizeof(Ad));
    else if(type == "dest") memcpy(&Ad, etherHead -> ether_dhost, sizeof(Ad));
@@ -81,7 +90,7 @@ void handler_callback(u_char *args, const struct pcap_pkthdr* pkthdr, const u_ch
    u_char *payload = 0;
    int Length = 0;
    string dataStr = "";
-   cout << "======= Packet " << numTCP + numUDP + numOther + 1 << " Information =======" << endl;
+   cout << "======= Packet " << numTCP + numUDP + numOther << " Information =======" << endl;
 
    string s_address = getMacAdress(etherHead, "source");
    string d_address = getMacAdress(etherHead, "dest");
@@ -137,7 +146,7 @@ void handler_callback(u_char *args, const struct pcap_pkthdr* pkthdr, const u_ch
          cout << "payload size is: " << pkthdr->len - (sizeof(struct ether_header) + sizeof(struct ip) + sizeof(struct tcphdr)) << endl;
          cout << "another calculation for payload: " << Length << endl;
          if (Length > 0) {
-            //cout << dataStr << endl;
+            cout << dataStr << endl;
          }
          bool hasTT = *args;
          cout << "The tcp connection analyze: " << endl;
@@ -151,39 +160,24 @@ void handler_callback(u_char *args, const struct pcap_pkthdr* pkthdr, const u_ch
             cout << "th_flag SYN: " << ((tcpHead -> th_flags) & 0x02) << endl;
             cout << "th_win: " << ntohs(tcpHead -> th_win) << endl;
             cout << "th_urp: " << ntohs(tcpHead -> th_urp) << endl;
-
+            
             unsigned long th_seq = ntohl(tcpHead -> th_seq);
             unsigned long th_ack = ntohl(tcpHead -> th_ack);
-            string initStr = s_address + to_string(sourcePort);
+            string InitStr = s_address + to_string(sourcePort);
             string respStr = d_address + to_string(destPort);
             int packetSize = int(pkthdr->len);
 
 
             cout << "oackey size is ddd : " << (pkthdr -> len) << endl;
             cout << "oackey size is isi : " << packetSize << endl;
+
  
             /* ======== Medadata ========= */
+
+
             if(((tcpHead -> th_flags) & 0x02)){
                //starts a connection
-               string idStr = initStr + respStr + "#" + to_string(connNum);
-               curSession[initStr + respStr] = connNum;
-/*             
-=> metaInfo:init_numPk, resp_numPk,  
-            init_numBt, resp_numBt, 
-            init_Dup, resp_Dup, 
-            closed 
-*/
-               metaInfo[idStr].push_back(1);
-               metaInfo[idStr].push_back(0);
-               metaInfo[idStr].push_back(packetSize);
-               metaInfo[idStr].push_back(0);
-               metaInfo[idStr].push_back(0);
-               metaInfo[idStr].push_back(0);
-               metaInfo[idStr].push_back(0);
-
-               init[idStr][th_seq] = {0, dataStr};
             }
-            // else if(){}
 
          }
 
@@ -212,7 +206,7 @@ void handler_callback(u_char *args, const struct pcap_pkthdr* pkthdr, const u_ch
          cout << "Dest IP address and port: " << destIp << ":"<< destPort << endl;
          cout << "payload size is: " << Length << endl;
          if (Length > 0) {
-            //cout << dataStr << endl;
+            cout << dataStr << endl;
          }
       }
       else{
@@ -242,12 +236,12 @@ int main(int argc, char *argv[]){
    bool hasT = 0;
 
    char errbuf[PCAP_ERRBUF_SIZE];
-   pcap_t *pf = NULL;
+   pcap_t *pf;
    struct bpf_program fp;
    char select_mail[] = ""; 
    /* char select_mail[] = "port 80"; */
    struct pcap_pkthdr h;
-   //const u_char *p;
+   const u_char *p;
 
    for(int i=0; i<argc; ++i){
       if(strcmp(argv[i], "-t\0") == 0){
