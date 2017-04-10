@@ -28,11 +28,17 @@ unordered_map<string, vector<int> > metaInfo;
 unordered_map<string, map<int, pair<bool, string> > > init;
 unordered_map<string, map<int, pair<bool, string> > > resp;
 //(init + resp + connNum) => (seq -> (ACKed, payload))
+
+unordered_map<string, pair<unsigned long, unsigned long> > init_seq;
+unordered_map<string, pair<unsigned long, unsigned long> > resp_ack;
+//(init + resp + connNum) => (seq, ack)
+
 unordered_map<string, int> curSession;
 //use for knowing which session it is currently in
 //also can know whether some 
 
-struct tcp_pseudo /*the tcp pseudo header*/
+
+struct tcp_pseudo 
 {
    uint32_t src_addr;
    uint32_t dst_addr;
@@ -147,10 +153,14 @@ void handler_callback(u_char *args, const struct pcap_pkthdr* pkthdr, const u_ch
             cout << "th_seq: " << ntohl(tcpHead -> th_seq) << endl;
             cout << "th_ack: " << ntohl(tcpHead -> th_ack) << endl;
             cout << "th_flag FIN: " << ((tcpHead -> th_flags) & 0x01) << endl;
-            cout << "th_flag ACK: " << ((tcpHead -> th_flags) & 0x10)<< endl;
+            cout << "th_flag ACK: " << ((tcpHead -> th_flags) & 0x10) << endl;
             cout << "th_flag SYN: " << ((tcpHead -> th_flags) & 0x02) << endl;
-            cout << "th_win: " << ntohs(tcpHead -> th_win) << endl;
-            cout << "th_urp: " << ntohs(tcpHead -> th_urp) << endl;
+            cout << "th_flag RST: " << ((tcpHead -> th_flags) & 0x04) << endl;
+            cout << "th_flag PUSH: " << ((tcpHead -> th_flags) & 0x08) << endl;
+            cout << "th_flag ECE: " << ((tcpHead -> th_flags) & 0x40) << endl;
+
+            //cout << "th_win: " << ntohs(tcpHead -> th_win) << endl;
+            //cout << "th_urp: " << ntohs(tcpHead -> th_urp) << endl;
 
             unsigned long th_seq = ntohl(tcpHead -> th_seq);
             unsigned long th_ack = ntohl(tcpHead -> th_ack);
@@ -158,21 +168,20 @@ void handler_callback(u_char *args, const struct pcap_pkthdr* pkthdr, const u_ch
             string respStr = d_address + to_string(destPort);
             int packetSize = int(pkthdr->len);
 
+            string idStr = initStr + respStr + "#" + to_string(connNum);
+            curSession[initStr + respStr] = connNum;
 
-            cout << "oackey size is ddd : " << (pkthdr -> len) << endl;
-            cout << "oackey size is isi : " << packetSize << endl;
+            cout << "The packet size is: " << packetSize << endl;
  
             /* ======== Medadata ========= */
-            if(((tcpHead -> th_flags) & 0x02)){
-               //starts a connection
-               string idStr = initStr + respStr + "#" + to_string(connNum);
-               curSession[initStr + respStr] = connNum;
-/*             
-=> metaInfo:init_numPk, resp_numPk,  
-            init_numBt, resp_numBt, 
-            init_Dup, resp_Dup, 
-            closed 
-*/
+            if( ((tcpHead -> th_flags) & 0x02) && !((tcpHead -> th_flags) & 0x10) ){
+               //starts a connection from init
+               /*             
+               => metaInfo:init_numPk, resp_numPk,  
+                           init_numBt, resp_numBt, 
+                           init_Dup, resp_Dup, 
+                           closed 
+               */
                metaInfo[idStr].push_back(1);
                metaInfo[idStr].push_back(0);
                metaInfo[idStr].push_back(packetSize);
@@ -183,7 +192,20 @@ void handler_callback(u_char *args, const struct pcap_pkthdr* pkthdr, const u_ch
 
                init[idStr][th_seq] = {0, dataStr};
             }
-            // else if(){}
+            else if( ((tcpHead -> th_flags) & 0x02) && ((tcpHead -> th_flags) & 0x10) ){
+               //the connection handshake from resp (ACK and SYN)
+
+
+            }
+
+            else if((tcpHead -> th_flags) & 0x10){
+               //Normal packets (with ACK)
+
+            }
+            else if((tcpHead -> th_flags) & 0x01){
+               //FIN flag, the connection finishes
+
+            }
 
          }
 
@@ -230,7 +252,6 @@ void handler_callback(u_char *args, const struct pcap_pkthdr* pkthdr, const u_ch
       cout << "Not an ip packet" << endl;
       cout << "Source MAC address: " << s_address << endl;
       cout << "Dest MAC address: " << d_address << endl;
-      //cout << "payload size is: " << ipHead -> ip_len - sizeof(struct ip) << endl;
    }
    cout << endl;
    cout << endl;
@@ -245,9 +266,7 @@ int main(int argc, char *argv[]){
    pcap_t *pf = NULL;
    struct bpf_program fp;
    char select_mail[] = ""; 
-   /* char select_mail[] = "port 80"; */
    struct pcap_pkthdr h;
-   //const u_char *p;
 
    for(int i=0; i<argc; ++i){
       if(strcmp(argv[i], "-t\0") == 0){
