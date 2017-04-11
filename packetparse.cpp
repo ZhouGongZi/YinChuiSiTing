@@ -98,7 +98,7 @@ string getMacAdress(const struct ether_header * etherHead, string type){
 }
 
 void handler_callback(u_char *args, const struct pcap_pkthdr* pkthdr, const u_char* packet){
-   cout << "entering loop func" << endl;
+   cerr << "entering loop func" << endl;
    const struct ether_header* etherHead;
    const struct ip* ipHead;
    const struct tcphdr* tcpHead;
@@ -112,12 +112,11 @@ void handler_callback(u_char *args, const struct pcap_pkthdr* pkthdr, const u_ch
    string dataStr = "";
    cout << "======= Packet " << numTCP + numUDP + numOther + 1 << " Information =======" << endl;
 
+   etherHead = (struct ether_header*) packet;
    string s_address = getMacAdress(etherHead, "source");
    string d_address = getMacAdress(etherHead, "dest");
 
-   etherHead = (struct ether_header*) packet;
    if(ntohs(etherHead -> ether_type) == ETHERTYPE_IP){
-      //cout << "entering IP" << endl;
       ipHead = (struct ip*)(packet + sizeof(struct ether_header));
       inet_ntop(AF_INET, &(ipHead->ip_src), sourceIp, INET_ADDRSTRLEN);
       inet_ntop(AF_INET, &(ipHead->ip_dst), destIp, INET_ADDRSTRLEN);
@@ -210,7 +209,7 @@ void handler_callback(u_char *args, const struct pcap_pkthdr* pkthdr, const u_ch
 
                init[init_rsp][th_seq] = {0, dataStr};
 
-               init_ack[init_rsp][th_seq] = th_seq;
+               init_ack[init_rsp][th_seq] = th_seq + 1;
 
                if(curSession[srcStr + "#" + destStr]){
                   metaInfo[init_rsp][6] = 1;
@@ -231,28 +230,52 @@ void handler_callback(u_char *args, const struct pcap_pkthdr* pkthdr, const u_ch
                metaInfo[init_rsp][1] ++;
                metaInfo[init_rsp][3] += packetSize;
 
-               resp[rsp_init][th_seq].first = {0, dataStr};
-               if(init_ack[init_rsp].second == th_ack) 
+               resp[rsp_init][th_seq] = {1, dataStr};
+               //set the first packet of handshake
+               for(auto it = init_ack[init_rsp].begin(); it != init_ack[init_rsp].end(); ++it){
+                  if((it -> second) == th_ack) init[init_rsp][th_ack - 1].first = 1;
+               }
 
+               /* maybe need to do something with resp_ack */
 
-               resp[init_rsp][th_seq] = {0, dataStr};
-               init[init_rsp][th_ack - 1].first = 1;
             }
             else if((tcpHead -> th_flags) & 0x01){
-               //FIN flag, the connection finishes
+               //FIN flag, the connection finishes, from init
+
                int acked = th_seq + 1;
-               int tempNum = curSession[destStr + "#" + srcStr];
-               string idStr = srcStr + "#" + destStr + "#" + to_string(tempNum);
+               int tempNum = curSession[srcStr + "#" + destStr];
 
+               string init_rsp = srcStr + "#" + destStr + "#" + to_string(tempNum);
+               string rsp_init = destStr + "#" + srcStr + "#" + to_string(tempNum);
 
+               if(metaInfo.find(init_rsp) != metaInfo.end()){
+                  metaInfo[init_rsp][1] ++;
+                  metaInfo[init_rsp][3] += packetSize;
+               }                  
 
-               curSession[destStr + "#" + srcStr] = 0;
+               init[init_rsp][th_seq] = {0, dataStr};
+               init_ack[init_rsp][th_seq] = th_seq + 1;
+               for(auto it = resp_ack[rsp_init].begin(); it != resp_ack[rsp_init].end(); ++it){
+                  if((it -> second) == th_ack) resp[rsp_init][it -> first].first = 1;
+               }
+
+               // curSession[destStr + "#" + srcStr] = 0;
             }
 
             else if((tcpHead -> th_flags) & 0x10){
                //Normal packets (with ACK)
-               //int tempNum = curSession[];
+               //first decide where is comes from
+               if(curSession[srcStr + "#" + destStr] != 0){
+                  //from init
+                  int tempNum = curSession[srcStr + "#" + destStr];
+                  string init_rsp = srcStr + "#" + destStr + "#" + to_string(tempNum);
+                  string rsp_init = destStr + "#" + srcStr + "#" + to_string(tempNum);   
 
+               }
+               else{
+                  //from resp
+               }
+  
             }
 
          }
@@ -344,6 +367,12 @@ int main(int argc, char *argv[]){
    cout << "Number of UDP packets: " << numUDP << endl;
    cout << "Number of Other packets: " << numOther << endl;
    cout << "Number of Total packets: " << numTCP + numUDP + numOther << endl;
+
+
+
+   for(auto it = metaInfo.begin(); it != metaInfo.end(); ++it){
+      cout << (it -> first) << endl;
+   }
    return 0;
 }
 
