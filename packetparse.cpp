@@ -258,7 +258,6 @@ void handler_callback(u_char *args, const struct pcap_pkthdr* pkthdr, const u_ch
                for(auto it = resp_ack[rsp_init].begin(); it != resp_ack[rsp_init].end(); ++it){
                   if((it -> second) == th_ack) resp[rsp_init][it -> first].first = 1;
                }
-
                // curSession[destStr + "#" + srcStr] = 0;
             }
 
@@ -270,10 +269,24 @@ void handler_callback(u_char *args, const struct pcap_pkthdr* pkthdr, const u_ch
                   int tempNum = curSession[srcStr + "#" + destStr];
                   string init_rsp = srcStr + "#" + destStr + "#" + to_string(tempNum);
                   string rsp_init = destStr + "#" + srcStr + "#" + to_string(tempNum);   
+                  metaInfo[init_rsp][0] ++;
+                  metaInfo[init_rsp][2] += packetSize;
+
+                  init[init_rsp][th_seq] = {0, dataStr};
+                  init_ack[init_rsp][th_seq] = th_seq + (pkthdr -> len);
 
                }
                else{
                   //from resp
+
+                  int tempNum = curSession[destStr + "#" + srcStr];
+                  string rsp_init = srcStr + "#" + destStr + "#" + to_string(tempNum);
+                  string init_rsp = destStr + "#" + srcStr + "#" + to_string(tempNum);   
+                  metaInfo[init_rsp][1] ++;
+                  metaInfo[init_rsp][3] += packetSize;
+
+                  resp[rsp_init][th_seq] = {0, dataStr};
+                  resp_ack[rsp_init][th_seq] = th_seq + (pkthdr -> len);
                }
   
             }
@@ -367,6 +380,9 @@ int main(int argc, char *argv[]){
    cout << "Number of UDP packets: " << numUDP << endl;
    cout << "Number of Other packets: " << numOther << endl;
    cout << "Number of Total packets: " << numTCP + numUDP + numOther << endl;
+
+
+   
 
 
 
