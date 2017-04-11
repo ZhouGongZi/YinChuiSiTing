@@ -22,19 +22,16 @@ static int connNum = 1;
 /*         
 => metaInfo:init_numPk, resp_numPk,  
             init_numBt, resp_numBt, 
-
             init_Dup, resp_Dup: need to be initialize later 
             
             closed: if == 2 then closed
 */
 unordered_map<string, vector<int> > metaInfo;
 //(init + resp + connNum) => (meta information)
-unordered_map<string, map<unsigned long, pair<bool, string> > > init;
-unordered_map<string, map<unsigned long, pair<bool, string> > > resp;
-//(init + resp + connNum) => (seq -> (ACKed, payload))
+unordered_map<string, map<unsigned long, pair<unsigned long, string> > > init;
+unordered_map<string, map<unsigned long, pair<unsigned long, string> > > resp;
+//(init + resp + connNum) => (seq -> (ACKed number, 0, if acked; payload))
 
-unordered_map<string, map<unsigned long, unsigned long> > init_ack;
-unordered_map<string, map<unsigned long, unsigned long> > resp_ack;
 //(init + resp + connNum) => (seq, ack)
 // ------------------------(seq, ack means the ack it need, ie: ack + size)
 
@@ -223,16 +220,10 @@ void handler_callback(u_char *args, const struct pcap_pkthdr* pkthdr, const u_ch
                metaInfo[init_rsp].push_back(0);
                metaInfo[init_rsp].push_back(0);
 
-               init[init_rsp][th_seq] = {0, dataStr};
-
-
-               init_ack[init_rsp][th_seq] = th_seq + 1;
+               init[init_rsp][th_seq] = {th_seq + 1, dataStr};
 
                if(curSession[srcStr + "#" + destStr]){
                   metaInfo[init_rsp][6] = 1;
-               }
-               if(curSession[destStr + "#" + srcStr]){
-                  metaInfo[rsp_init][6] = 1;
                }
 
                curSession[srcStr + "#" + destStr] = connNum;
@@ -248,12 +239,14 @@ void handler_callback(u_char *args, const struct pcap_pkthdr* pkthdr, const u_ch
                metaInfo[init_rsp][1] ++;
                metaInfo[init_rsp][3] += packetSize;
 
-               resp[rsp_init][th_seq] = {1, dataStr};
+               resp[rsp_init][th_seq] = {0, dataStr};
                //set the first packet of handshake
-               for(auto it = init_ack[init_rsp].begin(); it != init_ack[init_rsp].end(); ++it){
-                  if((it -> second) == th_ack) init[init_rsp][th_ack - 1].first = 1;
+               for(auto it = init[init_rsp].begin(); it != init[init_rsp].end(); ++it){
+                  if((it -> second).first == th_ack){
+                     (it -> second).first = 0;
+                     break;
+                  }
                }
-
                /* maybe need to do something with resp_ack */
 
             }
@@ -271,15 +264,12 @@ void handler_callback(u_char *args, const struct pcap_pkthdr* pkthdr, const u_ch
                      metaInfo[init_rsp][3] += packetSize;
                   }                  
 
-                  init[init_rsp][th_seq] = {0, dataStr};
-                  init_ack[init_rsp][th_seq] = th_seq + 1;
-                  for(auto it = resp_ack[rsp_init].begin(); it != resp_ack[rsp_init].end(); ++it){
-                     if((it -> second) == th_ack) resp[rsp_init][it -> first].first = 1;
-                  }
+                  init[init_rsp][th_seq] = {th_seq, dataStr};
 
                   metaInfo[init_rsp][6] ++;
                }
                else{
+                  //FIN from resp
                   int tempNum = curSession[destStr + "#" + srcStr];
 
                   string rsp_init = srcStr + "#" + destStr + "#" + to_string(tempNum);
@@ -290,16 +280,12 @@ void handler_callback(u_char *args, const struct pcap_pkthdr* pkthdr, const u_ch
                      metaInfo[init_rsp][2] += packetSize;
                   }                  
 
-                  resp[rsp_init][th_seq] = {0, dataStr};
-                  resp_ack[rsp_init][th_seq] = th_seq + 1;
-                  for(auto it = init_ack[rsp_init].begin(); it != init_ack[rsp_init].end(); ++it){
-                     if((it -> second) == th_ack) init[init_rsp][it -> first].first = 1;
-                  }
+                  resp[rsp_init][th_seq] = {th_seq, dataStr};
+
                   metaInfo[init_rsp][6] ++;
                }
 
             }
-
             else if((tcpHead -> th_flags) & 0x10){
                //Normal packets (with ACK)
                //first decide where is comes from
@@ -309,29 +295,51 @@ void handler_callback(u_char *args, const struct pcap_pkthdr* pkthdr, const u_ch
                   string init_rsp = srcStr + "#" + destStr + "#" + to_string(tempNum);
                   string rsp_init = destStr + "#" + srcStr + "#" + to_string(tempNum);   
                   metaInfo[init_rsp][0] ++;
-                  metaInfo[init_rsp][2] += packetSize;
-
-                  init[init_rsp][th_seq] = {0, dataStr};
-                  init_ack[init_rsp][th_seq] = th_seq + (pkthdr -> len);
-                  //ack the former matched one
-                  for(auto it = resp_ack[rsp_init].begin(); it != resp_ack[rsp_init].end(); ++it){
-                     if((it -> second) == th_ack) resp[rsp_init][it -> first].first = 1;
+                  if(packetSize != 0){
+                     //the packet itself, not ACK
+                     metaInfo[init_rsp][2] += packetSize;
+                     //detect whether dup
+                     if(init[init_rsp].find(th_seq) != init[init_rsp].end()){
+                        metaInfo[init_rsp][4] ++;
+                     }
+                     init[init_rsp][th_seq] = {th_seq + (pkthdr -> len), dataStr};
+                  }
+                  else{
+                     //ACK the previous packet
+                     for(auto it = resp[rsp_init].begin(); it != resp[rsp_init].end(); ++it){
+                        if((it -> second).first == th_ack){
+                           (it -> second).first = 0;
+                           break;
+                        }
+                     }
                   }
                }
                else{
                   //from resp
-
                   int tempNum = curSession[destStr + "#" + srcStr];
                   string rsp_init = srcStr + "#" + destStr + "#" + to_string(tempNum);
                   string init_rsp = destStr + "#" + srcStr + "#" + to_string(tempNum);   
                   metaInfo[init_rsp][1] ++;
-                  metaInfo[init_rsp][3] += packetSize;
-
-                  resp[rsp_init][th_seq] = {0, dataStr};
-                  resp_ack[rsp_init][th_seq] = th_seq + (pkthdr -> len);
-                  for(auto it = init_ack[init_rsp].begin(); it != init_ack[init_rsp].end(); ++it){
-                     if((it -> second) == th_ack) init[init_rsp][it -> first].first = 1;
+                  if(packetSize != 0){
+                     //the packet is not ACK
+                     metaInfo[init_rsp][3] += packetSize;
+                     //detect whether dup
+                     if(resp[rsp_init].find(th_seq) != resp[rsp_init].end()){
+                        metaInfo[init_rsp][5] ++;
+                     }
+                     resp[rsp_init][th_seq] = {th_seq + (pkthdr -> len), dataStr};
                   }
+                  else{
+                     //ACK
+                     for(auto it = init[init_rsp].begin(); it != init[init_rsp].end(); ++it){
+                        if((it -> second).first == th_ack){
+                           (it -> second).first = 0;
+                           break;
+                        }
+                     }
+
+                  }
+
                }
   
             }
@@ -430,11 +438,18 @@ int main(int argc, char *argv[]){
 
    for(auto it = metaInfo.begin(); it != metaInfo.end(); ++it){
       cout << (it -> first) << endl;
+      cout << (it -> second)[0] <<endl;
+      cout << (it -> second)[1] <<endl;
+      cout << (it -> second)[2] <<endl;
+      cout << (it -> second)[3] <<endl;
+      cout << (it -> second)[4] <<endl;
+      cout << (it -> second)[5] <<endl;
+      cout << (it -> second)[6] <<endl;
    }
 
    for(auto it = init.begin(); it != init.end(); ++it){
       cout << (it -> first) << endl;
-      cout << (it -> second).size() << endl;
+      cout << (it -> second).size() <<endl;
    }
 
    for(auto it = resp.begin(); it != resp.end(); ++it){
@@ -443,34 +458,5 @@ int main(int argc, char *argv[]){
    }
 
 
-
-   for(auto it = init.begin(); it != init.end(); ++it){
-      cout << "11111" << endl;
-      for(auto it2 = (it -> second).begin(); it2 != (it -> second).end(); ++it2){
-         /*
-         cout << "22222" << endl;
-         if((it2 -> second).first == 0){
-            cout << "33333" << endl;
-            cout << (it -> first) << endl;
-            metaInfo[it -> first][4] ++;
-            cout << "4444444" << endl;
-         }
-         */
-      }
-   }
-
-   for(auto it = resp.begin(); it != resp.end(); ++it){
-      for(auto it2 = (it -> second).begin(); it2 != (it -> second).end(); ++it2){
-         if((it2 -> second).first == 0){
-            metaInfo[convertToInitResp(it -> first)][5] ++;
-         }
-      }
-   }
-
-
    return 0;
 }
-
-
-
-

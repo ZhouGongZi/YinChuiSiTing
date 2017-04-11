@@ -1,0 +1,25 @@
+/*         
+=> metaInfo:init_numPk, resp_numPk,  
+            init_numBt, resp_numBt, 
+            init_Dup, resp_Dup: need to be initialize later 
+            
+            closed: if == 2 then closed
+*/
+unordered_map<string, vector<int> > metaInfo;
+//(init + resp + connNum) => (meta information)
+unordered_map<string, map<unsigned long, pair<unsigned long, string> > > init;
+unordered_map<string, map<unsigned long, pair<unsigned long, string> > > resp;
+//(init + resp + connNum) => (seq -> (ACKed, payload))
+//(init + resp + connNum) => (seq, ack)
+// ------------------------(seq, ack means the ack it need, ie: ack + size)
+
+unordered_map<string, int> curSession;
+//use for knowing which session it is curre
+//use for knowing which session it is currently in
+//also can know whether some 
+
+
+
+
+//FIN, what is close before EOF
+//after all round, give the dup in the metaInfo
