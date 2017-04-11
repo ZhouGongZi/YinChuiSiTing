@@ -21,8 +21,11 @@ static int numOther = 0;
 static int connNum = 1;
 /*         
 => metaInfo:init_numPk, resp_numPk,  
-            init_numBt, resp_numBt, init_Dup, resp_Dup, 
-            closed 
+            init_numBt, resp_numBt, 
+
+            init_Dup, resp_Dup: need to be initialize later 
+            
+            closed: if == 2 then closed
 */
 unordered_map<string, vector<int> > metaInfo;
 //(init + resp + connNum) => (meta information)
@@ -57,6 +60,19 @@ int sameSession(string s1, string s2){
    getline(istr2, s23, '#');
    if(s12 == s21 && s11 == s22 && s13 == s23) return 2;
    return 0;
+}
+
+string convertToInitResp(string ss){
+   //convert the resp_init string to init_resp form
+   string s11 = "";
+   string s12 = "";
+   string s13 = "";
+   stringstream istr1(ss); 
+   getline(istr1, s11, '#');
+   getline(istr1, s12, '#');
+   getline(istr1, s13, '#');
+   return (s12 + s11 + s13);
+
 }
 
 struct tcp_pseudo 
@@ -209,6 +225,7 @@ void handler_callback(u_char *args, const struct pcap_pkthdr* pkthdr, const u_ch
 
                init[init_rsp][th_seq] = {0, dataStr};
 
+
                init_ack[init_rsp][th_seq] = th_seq + 1;
 
                if(curSession[srcStr + "#" + destStr]){
@@ -224,6 +241,7 @@ void handler_callback(u_char *args, const struct pcap_pkthdr* pkthdr, const u_ch
             else if( ((tcpHead -> th_flags) & 0x02) && ((tcpHead -> th_flags) & 0x10) ){
                //the connection handshake from resp (ACK and SYN)
                int tempNum = curSession[destStr + "#" + srcStr];
+
                string rsp_init = srcStr + "#" + destStr + "#" + to_string(tempNum);
                string init_rsp = destStr + "#" + srcStr + "#" + to_string(tempNum);
 
@@ -241,24 +259,45 @@ void handler_callback(u_char *args, const struct pcap_pkthdr* pkthdr, const u_ch
             }
             else if((tcpHead -> th_flags) & 0x01){
                //FIN flag, the connection finishes, from init
+               if(curSession[srcStr + "#" + destStr] != 0){
+                  //FIN from init
+                  int tempNum = curSession[srcStr + "#" + destStr];
 
-               int acked = th_seq + 1;
-               int tempNum = curSession[srcStr + "#" + destStr];
+                  string init_rsp = srcStr + "#" + destStr + "#" + to_string(tempNum);
+                  string rsp_init = destStr + "#" + srcStr + "#" + to_string(tempNum);
 
-               string init_rsp = srcStr + "#" + destStr + "#" + to_string(tempNum);
-               string rsp_init = destStr + "#" + srcStr + "#" + to_string(tempNum);
+                  if(metaInfo.find(init_rsp) != metaInfo.end()){
+                     metaInfo[init_rsp][1] ++;
+                     metaInfo[init_rsp][3] += packetSize;
+                  }                  
 
-               if(metaInfo.find(init_rsp) != metaInfo.end()){
-                  metaInfo[init_rsp][1] ++;
-                  metaInfo[init_rsp][3] += packetSize;
-               }                  
+                  init[init_rsp][th_seq] = {0, dataStr};
+                  init_ack[init_rsp][th_seq] = th_seq + 1;
+                  for(auto it = resp_ack[rsp_init].begin(); it != resp_ack[rsp_init].end(); ++it){
+                     if((it -> second) == th_ack) resp[rsp_init][it -> first].first = 1;
+                  }
 
-               init[init_rsp][th_seq] = {0, dataStr};
-               init_ack[init_rsp][th_seq] = th_seq + 1;
-               for(auto it = resp_ack[rsp_init].begin(); it != resp_ack[rsp_init].end(); ++it){
-                  if((it -> second) == th_ack) resp[rsp_init][it -> first].first = 1;
+                  metaInfo[init_rsp][6] ++;
                }
-               // curSession[destStr + "#" + srcStr] = 0;
+               else{
+                  int tempNum = curSession[destStr + "#" + srcStr];
+
+                  string rsp_init = srcStr + "#" + destStr + "#" + to_string(tempNum);
+                  string init_rsp = destStr + "#" + srcStr + "#" + to_string(tempNum);
+
+                  if(metaInfo.find(init_rsp) != metaInfo.end()){
+                     metaInfo[init_rsp][0] ++;
+                     metaInfo[init_rsp][2] += packetSize;
+                  }                  
+
+                  resp[rsp_init][th_seq] = {0, dataStr};
+                  resp_ack[rsp_init][th_seq] = th_seq + 1;
+                  for(auto it = init_ack[rsp_init].begin(); it != init_ack[rsp_init].end(); ++it){
+                     if((it -> second) == th_ack) init[init_rsp][it -> first].first = 1;
+                  }
+                  metaInfo[init_rsp][6] ++;
+               }
+
             }
 
             else if((tcpHead -> th_flags) & 0x10){
@@ -274,7 +313,10 @@ void handler_callback(u_char *args, const struct pcap_pkthdr* pkthdr, const u_ch
 
                   init[init_rsp][th_seq] = {0, dataStr};
                   init_ack[init_rsp][th_seq] = th_seq + (pkthdr -> len);
-
+                  //ack the former matched one
+                  for(auto it = resp_ack[rsp_init].begin(); it != resp_ack[rsp_init].end(); ++it){
+                     if((it -> second) == th_ack) resp[rsp_init][it -> first].first = 1;
+                  }
                }
                else{
                   //from resp
@@ -287,6 +329,9 @@ void handler_callback(u_char *args, const struct pcap_pkthdr* pkthdr, const u_ch
 
                   resp[rsp_init][th_seq] = {0, dataStr};
                   resp_ack[rsp_init][th_seq] = th_seq + (pkthdr -> len);
+                  for(auto it = init_ack[init_rsp].begin(); it != init_ack[init_rsp].end(); ++it){
+                     if((it -> second) == th_ack) init[init_rsp][it -> first].first = 1;
+                  }
                }
   
             }
@@ -381,14 +426,48 @@ int main(int argc, char *argv[]){
    cout << "Number of Other packets: " << numOther << endl;
    cout << "Number of Total packets: " << numTCP + numUDP + numOther << endl;
 
-
-   
-
-
+   //initialize the dup in each dir in metaInfo
 
    for(auto it = metaInfo.begin(); it != metaInfo.end(); ++it){
       cout << (it -> first) << endl;
    }
+
+   for(auto it = init.begin(); it != init.end(); ++it){
+      cout << (it -> first) << endl;
+      cout << (it -> second).size() << endl;
+   }
+
+   for(auto it = resp.begin(); it != resp.end(); ++it){
+      cout << (it -> first) << endl;
+      cout << (it -> second).size() <<endl;
+   }
+
+
+
+   for(auto it = init.begin(); it != init.end(); ++it){
+      cout << "11111" << endl;
+      for(auto it2 = (it -> second).begin(); it2 != (it -> second).end(); ++it2){
+         /*
+         cout << "22222" << endl;
+         if((it2 -> second).first == 0){
+            cout << "33333" << endl;
+            cout << (it -> first) << endl;
+            metaInfo[it -> first][4] ++;
+            cout << "4444444" << endl;
+         }
+         */
+      }
+   }
+
+   for(auto it = resp.begin(); it != resp.end(); ++it){
+      for(auto it2 = (it -> second).begin(); it2 != (it -> second).end(); ++it2){
+         if((it2 -> second).first == 0){
+            metaInfo[convertToInitResp(it -> first)][5] ++;
+         }
+      }
+   }
+
+
    return 0;
 }
 
