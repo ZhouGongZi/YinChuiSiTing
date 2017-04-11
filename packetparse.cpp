@@ -11,6 +11,7 @@
 #include <unordered_set>
 #include <vector>
 #include <string>
+#include <sstream>
 using namespace std;
 
 static int numTCP = 0;
@@ -25,18 +26,38 @@ static int connNum = 1;
 */
 unordered_map<string, vector<int> > metaInfo;
 //(init + resp + connNum) => (meta information)
-unordered_map<string, map<int, pair<bool, string> > > init;
-unordered_map<string, map<int, pair<bool, string> > > resp;
+unordered_map<string, map<unsigned long, pair<bool, string> > > init;
+unordered_map<string, map<unsigned long, pair<bool, string> > > resp;
 //(init + resp + connNum) => (seq -> (ACKed, payload))
 
-unordered_map<string, pair<unsigned long, unsigned long> > init_seq;
-unordered_map<string, pair<unsigned long, unsigned long> > resp_ack;
+unordered_map<string, map<unsigned long, unsigned long> > init_ack;
+unordered_map<string, map<unsigned long, unsigned long> > resp_ack;
 //(init + resp + connNum) => (seq, ack)
+// ------------------------(seq, ack means the ack it need, ie: ack + size)
 
 unordered_map<string, int> curSession;
 //use for knowing which session it is currently in
 //also can know whether some 
 
+int sameSession(string s1, string s2){
+   if(s1 == s2) return 1;
+   string s11 = "";
+   string s12 = "";
+   string s13 = "";
+   string s21 = "";
+   string s22 = "";
+   string s23 = "";
+   stringstream istr1(s1);
+   stringstream istr2(s2);
+   getline(istr1, s11, '#');
+   getline(istr1, s12, '#');
+   getline(istr1, s13, '#');
+   getline(istr2, s21, '#');
+   getline(istr2, s22, '#');
+   getline(istr2, s23, '#');
+   if(s12 == s21 && s11 == s22 && s13 == s23) return 2;
+   return 0;
+}
 
 struct tcp_pseudo 
 {
@@ -77,14 +98,16 @@ string getMacAdress(const struct ether_header * etherHead, string type){
 }
 
 void handler_callback(u_char *args, const struct pcap_pkthdr* pkthdr, const u_char* packet){
+   cout << "entering loop func" << endl;
    const struct ether_header* etherHead;
    const struct ip* ipHead;
    const struct tcphdr* tcpHead;
    const struct udphdr* udpHead;
    char sourceIp[INET_ADDRSTRLEN];
    char destIp[INET_ADDRSTRLEN];
-   u_int sourcePort, destPort;
-   u_char *payload = 0;
+   u_int sourcePort = 0;
+   u_int destPort = 0;
+   u_char *payload = NULL;
    int Length = 0;
    string dataStr = "";
    cout << "======= Packet " << numTCP + numUDP + numOther + 1 << " Information =======" << endl;
@@ -108,7 +131,6 @@ void handler_callback(u_char *args, const struct pcap_pkthdr* pkthdr, const u_ch
          unsigned ipPayLen = ntohs(ipHead -> ip_len) - 4 * (ipHead -> ip_hl);
          Length = ipPayLen - 4 * (int(tcpHead -> th_off));
 
-         
          for(int i = 0; i < Length; i++) {
             if((payload[i] >= 32 && payload[i] <= 126) || payload[i] == 10 || payload[i] == 11 || payload[i] == 13) {
                dataStr += (char)payload[i];
@@ -140,8 +162,7 @@ void handler_callback(u_char *args, const struct pcap_pkthdr* pkthdr, const u_ch
 
 
          /* ======= fininshd calculation ======= */
-         cout << "payload size is: " << pkthdr->len - (sizeof(struct ether_header) + sizeof(struct ip) + sizeof(struct tcphdr)) << endl;
-         cout << "another calculation for payload: " << Length << endl;
+         cout << "payload size is: " << Length << endl;
          if (Length > 0) {
             //cout << dataStr << endl;
          }
@@ -164,46 +185,73 @@ void handler_callback(u_char *args, const struct pcap_pkthdr* pkthdr, const u_ch
 
             unsigned long th_seq = ntohl(tcpHead -> th_seq);
             unsigned long th_ack = ntohl(tcpHead -> th_ack);
-            string initStr = s_address + to_string(sourcePort);
-            string respStr = d_address + to_string(destPort);
+            string srcStr = string(sourceIp) + ":" + to_string(sourcePort);
+            string destStr = string(destIp) + ":" + to_string(destPort);
             int packetSize = int(pkthdr->len);
 
-            string idStr = initStr + respStr + "#" + to_string(connNum);
-            curSession[initStr + respStr] = connNum;
-
             cout << "The packet size is: " << packetSize << endl;
- 
-            /* ======== Medadata ========= */
-            if( ((tcpHead -> th_flags) & 0x02) && !((tcpHead -> th_flags) & 0x10) ){
-               //starts a connection from init
-               /*             
-               => metaInfo:init_numPk, resp_numPk,  
-                           init_numBt, resp_numBt, 
-                           init_Dup, resp_Dup, 
-                           closed 
-               */
-               metaInfo[idStr].push_back(1);
-               metaInfo[idStr].push_back(0);
-               metaInfo[idStr].push_back(packetSize);
-               metaInfo[idStr].push_back(0);
-               metaInfo[idStr].push_back(0);
-               metaInfo[idStr].push_back(0);
-               metaInfo[idStr].push_back(0);
+            cout << srcStr << endl;
+            cout << destStr << endl;
 
-               init[idStr][th_seq] = {0, dataStr};
+            /* ======== Medadata ========= */
+
+            if( ((tcpHead -> th_flags) & 0x02) && ((tcpHead -> th_flags) & 0x10) == 0 ){
+               string init_rsp = srcStr + "#" + destStr + "#" + to_string(connNum);
+               string rsp_init = destStr + "#" + srcStr + "#" + to_string(connNum);
+               //starts a connection from init
+
+               metaInfo[init_rsp].push_back(1);
+               metaInfo[init_rsp].push_back(0);
+               metaInfo[init_rsp].push_back(packetSize);
+               metaInfo[init_rsp].push_back(0);
+               metaInfo[init_rsp].push_back(0);
+               metaInfo[init_rsp].push_back(0);
+               metaInfo[init_rsp].push_back(0);
+
+               init[init_rsp][th_seq] = {0, dataStr};
+
+               init_ack[init_rsp][th_seq] = th_seq;
+
+               if(curSession[srcStr + "#" + destStr]){
+                  metaInfo[init_rsp][6] = 1;
+               }
+               if(curSession[destStr + "#" + srcStr]){
+                  metaInfo[rsp_init][6] = 1;
+               }
+
+               curSession[srcStr + "#" + destStr] = connNum;
+               connNum ++;
             }
             else if( ((tcpHead -> th_flags) & 0x02) && ((tcpHead -> th_flags) & 0x10) ){
                //the connection handshake from resp (ACK and SYN)
+               int tempNum = curSession[destStr + "#" + srcStr];
+               string rsp_init = srcStr + "#" + destStr + "#" + to_string(tempNum);
+               string init_rsp = destStr + "#" + srcStr + "#" + to_string(tempNum);
+
+               metaInfo[init_rsp][1] ++;
+               metaInfo[init_rsp][3] += packetSize;
+
+               resp[rsp_init][th_seq].first = {0, dataStr};
+               if(init_ack[init_rsp].second == th_ack) 
 
 
+               resp[init_rsp][th_seq] = {0, dataStr};
+               init[init_rsp][th_ack - 1].first = 1;
+            }
+            else if((tcpHead -> th_flags) & 0x01){
+               //FIN flag, the connection finishes
+               int acked = th_seq + 1;
+               int tempNum = curSession[destStr + "#" + srcStr];
+               string idStr = srcStr + "#" + destStr + "#" + to_string(tempNum);
+
+
+
+               curSession[destStr + "#" + srcStr] = 0;
             }
 
             else if((tcpHead -> th_flags) & 0x10){
                //Normal packets (with ACK)
-
-            }
-            else if((tcpHead -> th_flags) & 0x01){
-               //FIN flag, the connection finishes
+               //int tempNum = curSession[];
 
             }
 
@@ -284,7 +332,8 @@ int main(int argc, char *argv[]){
       return 2;
    }
 
-   bool* arg = &hasT;
+   bool* arg = NULL;
+   arg = &hasT;
    if(pcap_loop(pf, 0, handler_callback, (u_char*) arg) < 0){
       fprintf( stderr, "pcap_loop cannot excute");
       return 2;
