@@ -111,7 +111,6 @@ string getMacAdress(const struct ether_header * etherHead, string type){
 }
 
 void handler_callback(u_char *args, const struct pcap_pkthdr* pkthdr, const u_char* packet){
-   cerr << "entering loop func" << endl;
    const struct ether_header* etherHead;
    const struct ip* ipHead;
    const struct tcphdr* tcpHead;
@@ -295,9 +294,9 @@ void handler_callback(u_char *args, const struct pcap_pkthdr* pkthdr, const u_ch
                   string init_rsp = srcStr + "#" + destStr + "#" + to_string(tempNum);
                   string rsp_init = destStr + "#" + srcStr + "#" + to_string(tempNum);   
                   metaInfo[init_rsp][0] ++;
-                  if(packetSize != 0){
+                  metaInfo[init_rsp][2] += packetSize;
+                  if(Length != 0){
                      //the packet itself, not ACK
-                     metaInfo[init_rsp][2] += packetSize;
                      //detect whether dup
                      if(init[init_rsp].find(th_seq) != init[init_rsp].end()){
                         metaInfo[init_rsp][4] ++;
@@ -320,9 +319,9 @@ void handler_callback(u_char *args, const struct pcap_pkthdr* pkthdr, const u_ch
                   string rsp_init = srcStr + "#" + destStr + "#" + to_string(tempNum);
                   string init_rsp = destStr + "#" + srcStr + "#" + to_string(tempNum);   
                   metaInfo[init_rsp][1] ++;
-                  if(packetSize != 0){
+                  metaInfo[init_rsp][3] += packetSize;
+                  if(Length != 0){
                      //the packet is not ACK
-                     metaInfo[init_rsp][3] += packetSize;
                      //detect whether dup
                      if(resp[rsp_init].find(th_seq) != resp[rsp_init].end()){
                         metaInfo[init_rsp][5] ++;
@@ -342,6 +341,24 @@ void handler_callback(u_char *args, const struct pcap_pkthdr* pkthdr, const u_ch
 
                }
   
+            }
+            else{
+               if(curSession[srcStr + "#" + destStr] != 0){
+                  //from init
+                  int tempNum = curSession[srcStr + "#" + destStr];
+                  string init_rsp = srcStr + "#" + destStr + "#" + to_string(tempNum);
+                  string rsp_init = destStr + "#" + srcStr + "#" + to_string(tempNum);   
+                  metaInfo[init_rsp][0] ++;
+                  metaInfo[init_rsp][2] += packetSize;
+               }
+               else{
+                  int tempNum = curSession[destStr + "#" + srcStr];
+                  string rsp_init = srcStr + "#" + destStr + "#" + to_string(tempNum);
+                  string init_rsp = destStr + "#" + srcStr + "#" + to_string(tempNum);   
+                  metaInfo[init_rsp][1] ++;
+                  metaInfo[init_rsp][3] += packetSize;
+               }
+
             }
 
          }
