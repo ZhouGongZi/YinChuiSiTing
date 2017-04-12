@@ -12,6 +12,7 @@
 #include <vector>
 #include <string>
 #include <sstream>
+#include <fstream>
 using namespace std;
 
 static int numTCP = 0;
@@ -62,6 +63,15 @@ int sameSession(string s1, string s2){
    getline(istr2, s23, '#');
    if(s12 == s21 && s11 == s22 && s13 == s23) return 2;
    return 0;
+}
+
+string getSesseionNum(string str){
+   stringstream istr1(str);
+   string res = "";
+   getline(istr1, res, '#');
+   getline(istr1, res, '#');
+   getline(istr1, res, '#');
+   return res;
 }
 
 string convertToInitResp(string ss){
@@ -154,7 +164,6 @@ void handler_callback(u_char *args, const struct pcap_pkthdr* pkthdr, const u_ch
                dataStr += ".";
             }
          }
-
          cout << "Packet Type: TCP" << endl;
          cout << "Source MAC address: " << s_address << endl;
          cout << "Destination MAC address: " << d_address << endl;
@@ -314,7 +323,6 @@ void handler_callback(u_char *args, const struct pcap_pkthdr* pkthdr, const u_ch
                      for(int i=0; i < toDelete.size(); ++i){
                         init[init_rsp].erase(toDelete[i]);
                      }
-
                      init[init_rsp][th_seq] = {th_seq + Length, dataStr};
                   }
                   //ACK
@@ -464,31 +472,18 @@ int main(int argc, char *argv[]){
    cout << "Number of Other packets: " << numOther << endl;
    cout << "Number of Total packets: " << numTCP + numUDP + numOther << endl;
 
-   //initialize the dup in each dir in metaInfo
 
 
-/*
-   for(auto it = init.begin(); it != init.end(); ++it){
-      int tempInt = 0;
-      for(auto i : (it -> second)){
-         if(i.second.first != 0){
-            cout << "dup is : " << i.first << "________" << i.second.first << endl;
-            tempInt ++;
-         } 
-      }
-      metaInfo[it -> first][4] += tempInt;
+   //metaInfo print tp file:
+   for(auto it = metaInfo.begin(); it != metaInfo.end(); ++it){
+      //string conn ＝ getSesseionNum(it -> first);
+      //string filename = conn + ".meta";
+      ofstream myfile ("example.bin", ios::out | ios::app | ios::binary);
+
    }
 
-   for(auto it2 = resp.begin(); it2 != resp.end(); ++it2){
-      int tempInt = 0;
-      for(auto i2 : (it2 -> second)){
-         if(i2.second.first != 0){
-            tempInt ++;
-         } 
-      }
-      metaInfo[convertToInitResp(it2 -> first)][5] += tempInt;
-   }
-   */
+
+
 
    for(auto it = metaInfo.begin(); it != metaInfo.end(); ++it){
       cout << (it -> first) << endl;
@@ -504,13 +499,18 @@ int main(int argc, char *argv[]){
    for(auto it = init.begin(); it != init.end(); ++it){
       cout << (it -> first) << endl;
       cout << (it -> second).size() <<endl;
+      for(auto i : (it -> second)){
+         if(i.second.first == 0) cout << i.first << endl;
+      }
    }
 
    for(auto it = resp.begin(); it != resp.end(); ++it){
       cout << (it -> first) << endl;
       cout << (it -> second).size() <<endl;
+      for(auto i : (it -> second)){
+         if(i.second.first == 0) cout << i.first << endl;
+      }
    }
-
 
    return 0;
 }
