@@ -73,7 +73,7 @@ string convertToInitResp(string ss){
    getline(istr1, s11, '#');
    getline(istr1, s12, '#');
    getline(istr1, s13, '#');
-   return (s12 + s11 + s13);
+   return (s12 + "#" + s11 + "#" + s13);
 
 }
 
@@ -301,9 +301,6 @@ void handler_callback(u_char *args, const struct pcap_pkthdr* pkthdr, const u_ch
                   metaInfo[init_rsp][0] ++;
                   metaInfo[init_rsp][2] += packetSize;
                   if(Length != 0){
-                     cout << "length :::::" << Length << endl;
-                     cout << "th_seq :::::" << th_seq << endl;
-
                      //the packet itself, not ACK
                      //detect whether dup
                      if(init[init_rsp].find(th_seq) != init[init_rsp].end()){
@@ -452,11 +449,24 @@ int main(int argc, char *argv[]){
    //initialize the dup in each dir in metaInfo
 
    for(auto it = init.begin(); it != init.end(); ++it){
+      int tempInt = 0;
       for(auto i : (it -> second)){
          if(i.second.first != 0){
-            cout << i.first << "__________"<< i.second.first << endl;
+            cout << "dup is : " << i.first << "________" << i.second.first << endl;
+            tempInt ++;
          } 
       }
+      metaInfo[it -> first][4] += tempInt;
+   }
+
+   for(auto it2 = resp.begin(); it2 != resp.end(); ++it2){
+      int tempInt = 0;
+      for(auto i2 : (it2 -> second)){
+         if(i2.second.first != 0){
+            tempInt ++;
+         } 
+      }
+      metaInfo[convertToInitResp(it2 -> first)][5] += tempInt;
    }
 
    for(auto it = metaInfo.begin(); it != metaInfo.end(); ++it){
