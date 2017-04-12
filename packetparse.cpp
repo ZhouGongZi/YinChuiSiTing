@@ -230,7 +230,7 @@ void handler_callback(u_char *args, const struct pcap_pkthdr* pkthdr, const u_ch
                metaInfo[init_rsp].push_back(0);
                metaInfo[init_rsp].push_back(0);
                metaInfo[init_rsp].push_back(0);
-               metaInfo[init_rsp].push_back(2);
+               metaInfo[init_rsp].push_back(0);
                init[init_rsp][th_seq] = {th_seq + 1, dataStr};
 
                if(curSession[srcStr + "#" + destStr]){
@@ -533,7 +533,7 @@ int main(int argc, char *argv[]){
       myfile << "responder Bytes sent: " << (it -> second)[3] <<endl;
       myfile << "initiator num of Duplicates: " << (it -> second)[4] <<endl;
       myfile << "responder num of Duplicates: " << (it -> second)[5] <<endl;
-      if((it -> second)[6]){
+      if((it -> second)[6] == 1){
          myfile << "conection closed properly " << endl;
       }
       else{
