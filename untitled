@@ -9,6 +9,9 @@ unordered_map<string, vector<int> > metaInfo;
 //(init + resp + connNum) => (meta information)
 unordered_map<string, map<unsigned long, pair<unsigned long, string> > > init;
 unordered_map<string, map<unsigned long, pair<unsigned long, string> > > resp;
+unordered_map<string, unordered_set<unsigned long> > packetACK;
+
+unordered_map<string, >
 //(init + resp + connNum) => (seq -> (ACKed, payload))
 //(init + resp + connNum) => (seq, ack)
 // ------------------------(seq, ack means the ack it need, ie: ack + size)

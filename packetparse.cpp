@@ -28,9 +28,14 @@ static int connNum = 1;
 */
 unordered_map<string, vector<int> > metaInfo;
 //(init + resp + connNum) => (meta information)
+
 unordered_map<string, map<unsigned long, pair<unsigned long, string> > > init;
 unordered_map<string, map<unsigned long, pair<unsigned long, string> > > resp;
-//(init + resp + connNum) => (seq -> (ACKed number, 0, if acked; payload))
+//(init + resp + connNum) => (seq -> (ACKed number(size + seq), 0, if acked; payload))
+
+unordered_map<string, unordered_set<unsigned long> > init_packetACK;
+unordered_map<string, unordered_set<unsigned long> > resp_packetACK;
+//used to detect how many dup, if already in, then +1 to metaInfo
 
 //(init + resp + connNum) => (seq, ack)
 // ------------------------(seq, ack means the ack it need, ie: ack + size)
@@ -296,20 +301,21 @@ void handler_callback(u_char *args, const struct pcap_pkthdr* pkthdr, const u_ch
                   metaInfo[init_rsp][0] ++;
                   metaInfo[init_rsp][2] += packetSize;
                   if(Length != 0){
+                     cout << "length :::::" << Length << endl;
+                     cout << "th_seq :::::" << th_seq << endl;
+
                      //the packet itself, not ACK
                      //detect whether dup
                      if(init[init_rsp].find(th_seq) != init[init_rsp].end()){
                         metaInfo[init_rsp][4] ++;
                      }
-                     init[init_rsp][th_seq] = {th_seq + (pkthdr -> len), dataStr};
+                     init[init_rsp][th_seq] = {th_seq + Length, dataStr};
                   }
-                  else{
-                     //ACK the previous packet
-                     for(auto it = resp[rsp_init].begin(); it != resp[rsp_init].end(); ++it){
-                        if((it -> second).first == th_ack){
-                           (it -> second).first = 0;
-                           break;
-                        }
+                  //ACK
+                  for(auto it = resp[rsp_init].begin(); it != resp[rsp_init].end(); ++it){
+                     if((it -> second).first == th_ack){
+                        (it -> second).first = 0;
+                        break;
                      }
                   }
                }
@@ -326,21 +332,16 @@ void handler_callback(u_char *args, const struct pcap_pkthdr* pkthdr, const u_ch
                      if(resp[rsp_init].find(th_seq) != resp[rsp_init].end()){
                         metaInfo[init_rsp][5] ++;
                      }
-                     resp[rsp_init][th_seq] = {th_seq + (pkthdr -> len), dataStr};
+                     resp[rsp_init][th_seq] = {th_seq + Length, dataStr};
                   }
-                  else{
                      //ACK
-                     for(auto it = init[init_rsp].begin(); it != init[init_rsp].end(); ++it){
-                        if((it -> second).first == th_ack){
-                           (it -> second).first = 0;
-                           break;
-                        }
+                  for(auto it = init[init_rsp].begin(); it != init[init_rsp].end(); ++it){
+                     if((it -> second).first == th_ack){
+                        (it -> second).first = 0;
+                        break;
                      }
-
                   }
-
                }
-  
             }
             else{
                if(curSession[srcStr + "#" + destStr] != 0){
@@ -358,11 +359,8 @@ void handler_callback(u_char *args, const struct pcap_pkthdr* pkthdr, const u_ch
                   metaInfo[init_rsp][1] ++;
                   metaInfo[init_rsp][3] += packetSize;
                }
-
             }
-
          }
-
       }
       else if(ipHead -> ip_p == IPPROTO_UDP){
          numUDP ++;
@@ -452,6 +450,14 @@ int main(int argc, char *argv[]){
    cout << "Number of Total packets: " << numTCP + numUDP + numOther << endl;
 
    //initialize the dup in each dir in metaInfo
+
+   for(auto it = init.begin(); it != init.end(); ++it){
+      for(auto i : (it -> second)){
+         if(i.second.first != 0){
+            cout << i.first << "__________"<< i.second.first << endl;
+         } 
+      }
+   }
 
    for(auto it = metaInfo.begin(); it != metaInfo.end(); ++it){
       cout << (it -> first) << endl;
