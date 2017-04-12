@@ -34,16 +34,15 @@ unordered_map<string, map<unsigned long, pair<unsigned long, string> > > init;
 unordered_map<string, map<unsigned long, pair<unsigned long, string> > > resp;
 //(init + resp + connNum) => (seq -> (ACKed number(size + seq), 0, if acked; payload))
 
-unordered_map<string, unordered_set<unsigned long> > init_packetACK;
-unordered_map<string, unordered_set<unsigned long> > resp_packetACK;
-//used to detect how many dup, if already in, then +1 to metaInfo
-
 //(init + resp + connNum) => (seq, ack)
 // ------------------------(seq, ack means the ack it need, ie: ack + size)
 
 unordered_map<string, int> curSession;
 //use for knowing which session it is currently in
 //also can know whether some 
+unordered_map<string, unsigned long> initFIN_ACK;
+unordered_map<string, unsigned long> respFIN_ACK;
+
 
 int sameSession(string s1, string s2){
    if(s1 == s2) return 1;
@@ -232,13 +231,11 @@ void handler_callback(u_char *args, const struct pcap_pkthdr* pkthdr, const u_ch
                metaInfo[init_rsp].push_back(0);
                metaInfo[init_rsp].push_back(0);
                metaInfo[init_rsp].push_back(2);
-
                init[init_rsp][th_seq] = {th_seq + 1, dataStr};
 
                if(curSession[srcStr + "#" + destStr]){
                   metaInfo[init_rsp][6] = 1;
                }
-
                curSession[srcStr + "#" + destStr] = connNum;
                connNum ++;
             }
@@ -276,15 +273,13 @@ void handler_callback(u_char *args, const struct pcap_pkthdr* pkthdr, const u_ch
                      metaInfo[init_rsp][1] ++;
                      metaInfo[init_rsp][3] += packetSize;
                   }                  
-
-                  init[init_rsp][th_seq] = {th_seq, dataStr};
-
-                  metaInfo[init_rsp][6] --;
+                  init[init_rsp][th_seq] = {th_seq + 1, dataStr};
+                  //metaInfo[init_rsp][6] --;
+                  initFIN_ACK[init_rsp] = th_seq;
                }
                else{
                   //FIN from resp
                   int tempNum = curSession[destStr + "#" + srcStr];
-
                   string rsp_init = srcStr + "#" + destStr + "#" + to_string(tempNum);
                   string init_rsp = destStr + "#" + srcStr + "#" + to_string(tempNum);
 
@@ -292,13 +287,13 @@ void handler_callback(u_char *args, const struct pcap_pkthdr* pkthdr, const u_ch
                      metaInfo[init_rsp][0] ++;
                      metaInfo[init_rsp][2] += packetSize;
                   }                  
-
-                  resp[rsp_init][th_seq] = {th_seq, dataStr};
-
-                  metaInfo[init_rsp][6] --;
+                  resp[rsp_init][th_seq] = {th_seq + 1, dataStr};
+                  respFIN_ACK[rsp_init] = th_seq;
+                  //metaInfo[init_rsp][6] --;
                }
 
             }
+
             else if((tcpHead -> th_flags) & 0x10){
                //Normal packets (with ACK)
                //first decide where is comes from
@@ -326,12 +321,16 @@ void handler_callback(u_char *args, const struct pcap_pkthdr* pkthdr, const u_ch
                      init[init_rsp][th_seq] = {th_seq + Length, dataStr};
                   }
                   //ACK
-                  for(auto it = resp[rsp_init].begin(); it != resp[rsp_init].end(); ++it){
-                     if((it -> second).first == th_ack){
-                        (it -> second).first = 0;
-                        break;
+
+                  if(((tcpHead -> th_flags) & 0x04) == 0){
+                     for(auto it = resp[rsp_init].begin(); it != resp[rsp_init].end(); ++it){
+                        if((it -> second).first == th_ack){
+                           (it -> second).first = 0;
+                           break;
+                        }
                      }
                   }
+
                }
                else{
                   //from resp
@@ -354,17 +353,18 @@ void handler_callback(u_char *args, const struct pcap_pkthdr* pkthdr, const u_ch
 
                      resp[rsp_init][th_seq] = {th_seq + Length, dataStr};
                   }
-                     //ACK
-                  for(auto it = init[init_rsp].begin(); it != init[init_rsp].end(); ++it){
-                     if((it -> second).first == th_ack){
-                        (it -> second).first = 0;
-                        break;
+                  //ACK
+                  if(((tcpHead -> th_flags) & 0x04) == 0){
+                     for(auto it = init[init_rsp].begin(); it != init[init_rsp].end(); ++it){
+                        if((it -> second).first == th_ack){
+                           (it -> second).first = 0;
+                           break;
+                        }
                      }
                   }
                }
             }
             else{
-
                if(curSession[srcStr + "#" + destStr] != 0){
                   //from init
                   int tempNum = curSession[srcStr + "#" + destStr];
@@ -372,7 +372,7 @@ void handler_callback(u_char *args, const struct pcap_pkthdr* pkthdr, const u_ch
                   string rsp_init = destStr + "#" + srcStr + "#" + to_string(tempNum);   
                   metaInfo[init_rsp][0] ++;
                   metaInfo[init_rsp][2] += packetSize;
-                  if(((tcpHead -> th_flags) & 0x04) && (metaInfo[init_rsp][6] != 0)) metaInfo[init_rsp][6] = 100;
+                  //if(((tcpHead -> th_flags) & 0x04) && (metaInfo[init_rsp][6] != 0)) metaInfo[init_rsp][6] = 0;
                }
                else{
                   int tempNum = curSession[destStr + "#" + srcStr];
@@ -380,7 +380,7 @@ void handler_callback(u_char *args, const struct pcap_pkthdr* pkthdr, const u_ch
                   string init_rsp = destStr + "#" + srcStr + "#" + to_string(tempNum);   
                   metaInfo[init_rsp][1] ++;
                   metaInfo[init_rsp][3] += packetSize;
-                  if(((tcpHead -> th_flags) & 0x04) && (metaInfo[init_rsp][6] != 0)) metaInfo[init_rsp][6] = 100;
+                  //if(((tcpHead -> th_flags) & 0x04) && (metaInfo[init_rsp][6] != 0)) metaInfo[init_rsp][6] = 0;
                }
             }
          }
@@ -472,19 +472,18 @@ int main(int argc, char *argv[]){
    cout << "Number of Other packets: " << numOther << endl;
    cout << "Number of Total packets: " << numTCP + numUDP + numOther << endl;
 
+   //initialize the EOF in metaInfo
+   for(auto i : initFIN_ACK){
+      string init_key = i.first;
+      if(initFIN_ACK[init_key] && respFIN_ACK[convertToInitResp(init_key)]){ //means the FIN sent out
+         unsigned long init_seq = initFIN_ACK[init_key];
+         unsigned long resp_seq = respFIN_ACK[convertToInitResp(init_key)];
+         if(init[init_key][init_seq].first == 0 && resp[convertToInitResp(init_key)][resp_seq].first == 0){// means the FIN ACKed
+            if(metaInfo.find(init_key) != metaInfo.end()) metaInfo[init_key][6] = 1;
+         }
 
-
-   //metaInfo print tp file:
-   for(auto it = metaInfo.begin(); it != metaInfo.end(); ++it){
-      //string conn ＝ getSesseionNum(it -> first);
-      //string filename = conn + ".meta";
-      ofstream myfile ("example.bin", ios::out | ios::app | ios::binary);
-
+      }
    }
-
-
-
-
    for(auto it = metaInfo.begin(); it != metaInfo.end(); ++it){
       cout << (it -> first) << endl;
       cout << (it -> second)[0] <<endl;
@@ -496,6 +495,7 @@ int main(int argc, char *argv[]){
       cout << (it -> second)[6] <<endl;
    }
 
+/*
    for(auto it = init.begin(); it != init.end(); ++it){
       cout << (it -> first) << endl;
       cout << (it -> second).size() <<endl;
@@ -511,6 +511,69 @@ int main(int argc, char *argv[]){
          if(i.second.first == 0) cout << i.first << endl;
       }
    }
+   //metaInfo print tp file:
+
+*/
+
+   for(auto it = metaInfo.begin(); it != metaInfo.end(); ++it){
+      string conn = getSesseionNum(it -> first);
+      string filename = conn + ".meta";
+      ofstream myfile (filename, ios::out | ios::app | ios::binary);
+      stringstream istr(it -> first);
+
+      string initIP;
+      string respIP;
+      getline(istr, initIP, '#');
+      getline(istr, respIP, '#');
+      myfile << "The initiator IP and port: " << initIP << endl;
+      myfile << "The responder IP and port: " << respIP << endl;
+      myfile << "initiator packet number: "<< (it -> second)[0] <<endl;
+      myfile << "responder packet number: "<< (it -> second)[1] <<endl;
+      myfile << "initiator Bytes sent: " << (it -> second)[2] <<endl;
+      myfile << "responder Bytes sent: " << (it -> second)[3] <<endl;
+      myfile << "initiator num of Duplicates: " << (it -> second)[4] <<endl;
+      myfile << "responder num of Duplicates: " << (it -> second)[5] <<endl;
+      if((it -> second)[6]){
+         myfile << "conection closed properly " << endl;
+      }
+      else{
+         myfile << "connection closed before two FIN acked" << endl;
+      }
+   }
+
+   //init payload data
+   for(auto it = init.begin(); it != init.end(); ++it){
+      string conn = getSesseionNum(it -> first);
+      string filename = conn + ".initiator";
+      ofstream myInit (filename, ios::out | ios::app | ios::binary);
+      for(auto i : (it -> second)){
+         if(i.second.first == 0){
+            myInit << i.second.second << endl;
+         }
+      }
+   }
+
+   //resp payload data
+   for(auto it = resp.begin(); it != resp.end(); ++it){
+      string conn = getSesseionNum(it -> first);
+      string filename = conn + ".responder";
+      ofstream myResp (filename, ios::out | ios::app | ios::binary);
+      for(auto i : (it -> second)){
+         if(i.second.first == 0){
+            myResp << i.second.second << endl;
+         }
+      }
+   }
+
 
    return 0;
 }
+
+
+
+
+
+
+
+
+
