@@ -190,10 +190,10 @@ void handler_callback(u_char *args, const struct pcap_pkthdr* pkthdr, const u_ch
          if (Length > 0) {
             //cout << dataStr << endl;
          }
-         bool hasTT = *args;
-         cout << "The tcp connection analyze: " << endl;
+         int hasTT = *args;
+         cout << "The tcp connection analyze: hasTT = " << hasTT << endl;
          cout << "-------------------------------" << endl;
-         if(hasTT){
+         if(hasTT % 2){
 
             cout << "th_seq: " << ntohl(tcpHead -> th_seq) << endl;
             cout << "th_ack: " << ntohl(tcpHead -> th_ack) << endl;
@@ -435,7 +435,7 @@ void handler_callback(u_char *args, const struct pcap_pkthdr* pkthdr, const u_ch
 
 int main(int argc, char *argv[]){
 
-   bool hasT = 0;
+   int hasT = 0;
 
    char errbuf[PCAP_ERRBUF_SIZE];
    pcap_t *pf = NULL;
@@ -445,21 +445,25 @@ int main(int argc, char *argv[]){
 
    for(int i=0; i<argc; ++i){
       if(strcmp(argv[i], "-t\0") == 0){
-         hasT = 1;
+         hasT += 1;
+      }
+      else if(strcmp(argv[i], "-m\0") == 0){
+         hasT += 2;
       }
    }
-
+/*
    if((argc != 2 && !hasT) || (argc != 3 && hasT)){
       fprintf( stderr, "Usage: %s {pcap-file}\n", argv[0] );
       return 2;
    }
+*/
 
    if( (pf = pcap_open_offline( argv[1], errbuf )) == NULL ){
       fprintf( stderr, "Can't process pcap file %s: %s\n", argv[1], errbuf );
       return 2;
    }
 
-   bool* arg = NULL;
+   int* arg = NULL;
    arg = &hasT;
    if(pcap_loop(pf, 0, handler_callback, (u_char*) arg) < 0){
       fprintf( stderr, "pcap_loop cannot excute");
@@ -548,7 +552,7 @@ int main(int argc, char *argv[]){
       ofstream myInit (filename, ios::out | ios::app | ios::binary);
       for(auto i : (it -> second)){
          if(i.second.first == 0){
-            myInit << i.second.second << endl;
+            myInit << i.second.second << endl << "=========================================================" << endl;
          }
       }
    }
@@ -560,7 +564,7 @@ int main(int argc, char *argv[]){
       ofstream myResp (filename, ios::out | ios::app | ios::binary);
       for(auto i : (it -> second)){
          if(i.second.first == 0){
-            myResp << i.second.second << endl;
+            myResp  << i.second.second << endl << "=========================================================" << endl;
          }
       }
    }
