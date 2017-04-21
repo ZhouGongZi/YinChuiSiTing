@@ -44,6 +44,16 @@ unordered_map<string, unsigned long> initFIN_ACK;
 unordered_map<string, unsigned long> respFIN_ACK;
 
 
+int getSemiPos(string src){
+   for(int i=0; i<src.length(); ++i){
+      if(src[i] == ':'){
+         return i;
+      }
+   }
+   return -1;
+}
+
+
 int sameSession(string s1, string s2){
    if(s1 == s2) return 1;
    string s11 = "";
@@ -193,7 +203,7 @@ void handler_callback(u_char *args, const struct pcap_pkthdr* pkthdr, const u_ch
          int hasTT = *args;
          cout << "The tcp connection analyze: hasTT = " << hasTT << endl;
          cout << "-------------------------------" << endl;
-         if(hasTT % 2){
+         if(1){
 
             cout << "th_seq: " << ntohl(tcpHead -> th_seq) << endl;
             cout << "th_ack: " << ntohl(tcpHead -> th_ack) << endl;
@@ -488,16 +498,6 @@ int main(int argc, char *argv[]){
 
       }
    }
-   for(auto it = metaInfo.begin(); it != metaInfo.end(); ++it){
-      cout << (it -> first) << endl;
-      cout << (it -> second)[0] <<endl;
-      cout << (it -> second)[1] <<endl;
-      cout << (it -> second)[2] <<endl;
-      cout << (it -> second)[3] <<endl;
-      cout << (it -> second)[4] <<endl;
-      cout << (it -> second)[5] <<endl;
-      cout << (it -> second)[6] <<endl;
-   }
 
 /*
    for(auto it = init.begin(); it != init.end(); ++it){
@@ -519,56 +519,92 @@ int main(int argc, char *argv[]){
 
 */
 
-   for(auto it = metaInfo.begin(); it != metaInfo.end(); ++it){
-      string conn = getSesseionNum(it -> first);
-      string filename = conn + ".meta";
-      ofstream myfile (filename, ios::out | ios::app | ios::binary);
-      stringstream istr(it -> first);
+   if(hasT % 2){
+      for(auto it = metaInfo.begin(); it != metaInfo.end(); ++it){
+         string conn = getSesseionNum(it -> first);
+         string filename = conn + ".meta";
+         ofstream myfile (filename, ios::out | ios::app | ios::binary);
+         stringstream istr(it -> first);
 
-      string initIP;
-      string respIP;
-      getline(istr, initIP, '#');
-      getline(istr, respIP, '#');
-      myfile << "The initiator IP and port: " << initIP << endl;
-      myfile << "The responder IP and port: " << respIP << endl;
-      myfile << "initiator packet number: "<< (it -> second)[0] <<endl;
-      myfile << "responder packet number: "<< (it -> second)[1] <<endl;
-      myfile << "initiator Bytes sent: " << (it -> second)[2] <<endl;
-      myfile << "responder Bytes sent: " << (it -> second)[3] <<endl;
-      myfile << "initiator num of Duplicates: " << (it -> second)[4] <<endl;
-      myfile << "responder num of Duplicates: " << (it -> second)[5] <<endl;
-      if((it -> second)[6] == 1){
-         myfile << "conection closed properly " << endl;
+         string initIP;
+         string respIP;
+         getline(istr, initIP, '#');
+         getline(istr, respIP, '#');
+         myfile << "The initiator IP and port: " << initIP << endl;
+         myfile << "The responder IP and port: " << respIP << endl;
+         myfile << "initiator packet number: "<< (it -> second)[0] <<endl;
+         myfile << "responder packet number: "<< (it -> second)[1] <<endl;
+         myfile << "initiator Bytes sent: " << (it -> second)[2] <<endl;
+         myfile << "responder Bytes sent: " << (it -> second)[3] <<endl;
+         myfile << "initiator num of Duplicates: " << (it -> second)[4] <<endl;
+         myfile << "responder num of Duplicates: " << (it -> second)[5] <<endl;
+         if((it -> second)[6] == 1){
+            myfile << "conection closed properly " << endl;
+         }
+         else{
+            myfile << "connection closed before two FIN acked" << endl;
+         }
       }
-      else{
-         myfile << "connection closed before two FIN acked" << endl;
-      }
-   }
 
-   //init payload data
-   for(auto it = init.begin(); it != init.end(); ++it){
-      string conn = getSesseionNum(it -> first);
-      string filename = conn + ".initiator";
-      ofstream myInit (filename, ios::out | ios::app | ios::binary);
-      for(auto i : (it -> second)){
-         if(i.second.first == 0){
-            myInit << i.second.second << endl << "=========================================================" << endl;
+      //init payload data
+      for(auto it = init.begin(); it != init.end(); ++it){
+         string conn = getSesseionNum(it -> first);
+         string filename = conn + ".initiator";
+         ofstream myInit (filename, ios::out | ios::app | ios::binary);
+         for(auto i : (it -> second)){
+            if(i.second.first == 0){
+               myInit << i.second.second << endl << "=========================================================" << endl;
+            }
+         }
+      }
+
+      //resp payload data
+      for(auto it = resp.begin(); it != resp.end(); ++it){
+         string conn = getSesseionNum(it -> first);
+         string filename = conn + ".responder";
+         ofstream myResp (filename, ios::out | ios::app | ios::binary);
+         for(auto i : (it -> second)){
+            if(i.second.first == 0){
+               myResp  << i.second.second << endl << "=========================================================" << endl;
+            }
          }
       }
    }
 
-   //resp payload data
-   for(auto it = resp.begin(); it != resp.end(); ++it){
-      string conn = getSesseionNum(it -> first);
-      string filename = conn + ".responder";
-      ofstream myResp (filename, ios::out | ios::app | ios::binary);
-      for(auto i : (it -> second)){
-         if(i.second.first == 0){
-            myResp  << i.second.second << endl << "=========================================================" << endl;
-         }
-      }
-   }
+   if(hasT / 2){
+      //has -m option
+      for(auto it = init.begin(); it != init.end(); ++it){
+         string init_key = it -> first;
+         string resp_key = convertToInitResp(init_key);
 
+         if(resp.find(resp_key) == resp.end()) continue;
+
+         stringstream iStr(init_key);
+         string initStr = "";
+         string respStr = "";
+         string seqNum = ""; //specified for creating file
+         getline(iStr, initStr, '#');
+         getline(iStr, respStr, '#');
+         getline(iStr, seqNum, '#');
+
+         string respPort = ""; //used to 
+         stringstream istrResp(respStr);
+         getline(istrResp, respPort, ':');
+         getline(istrResp, respPort, ':');
+
+         if(respPort != "25" || respPort != "587") continue; //not smtp service
+         // ========== whether it is accpted: ========== //
+         for(auto ){
+
+         }
+
+
+
+
+      }
+
+
+   }
 
    return 0;
 }
