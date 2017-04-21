@@ -469,6 +469,7 @@ void handler_callback(u_char *args, const struct pcap_pkthdr* pkthdr, const u_ch
 int main(int argc, char *argv[]){
 
    int hasT = 0;
+   bool hasC = 0;
 
    char errbuf[PCAP_ERRBUF_SIZE];
    pcap_t *pf = NULL;
@@ -482,6 +483,9 @@ int main(int argc, char *argv[]){
       }
       else if(strcmp(argv[i], "-m\0") == 0){
          hasT += 2;
+      }
+      else if(strcmp(argv[i], "-c\0") == 0){
+         hasC = 1;
       }
    }
 /*
@@ -521,26 +525,6 @@ int main(int argc, char *argv[]){
 
       }
    }
-
-/*
-   for(auto it = init.begin(); it != init.end(); ++it){
-      cout << (it -> first) << endl;
-      cout << (it -> second).size() <<endl;
-      for(auto i : (it -> second)){
-         if(i.second.first == 0) cout << i.first << endl;
-      }
-   }
-
-   for(auto it = resp.begin(); it != resp.end(); ++it){
-      cout << (it -> first) << endl;
-      cout << (it -> second).size() <<endl;
-      for(auto i : (it -> second)){
-         if(i.second.first == 0) cout << i.first << endl;
-      }
-   }
-   //metaInfo print tp file:
-
-*/
 
    if(hasT % 2){
       for(auto it = metaInfo.begin(); it != metaInfo.end(); ++it){
@@ -620,7 +604,7 @@ int main(int argc, char *argv[]){
          // ========== whether it is accpted: ========== //
          bool acpted = 0;
          bool hasStart = 0;
-         
+
          for(auto i : resp[resp_key]){
             string respondCode = getRespondCode(i.second.second);
             if(hasStart && (respondCode == "250")){
@@ -684,6 +668,41 @@ int main(int argc, char *argv[]){
                }
             }
             if(breakOut) break;
+         }
+      }
+   }
+   if(hasC){
+      for(auto it = resp.begin(); it != resp.end(); ++it){
+         string resp_key = it -> first;
+
+         stringstream iStr(resp_key);
+         string initStr = "";
+         string respStr = "";
+         string connNum = ""; //specified for creating file
+         getline(iStr, respStr, '#');
+         getline(iStr, initStr, '#');
+         getline(iStr, connNum, '#');
+
+         string filename = connNum + ".cookie";
+         ofstream myCookie (filename, ios::out | ios::app | ios::binary);
+         myCookie << "cookie: " << endl;
+
+         for(auto i : resp[resp_key]){
+            string payload = i.second.second;
+            string line;
+            stringstream istrPayload(payload);
+            while(getline(istrPayload, line)){
+               stringstream temp(line);
+               string first = "";
+               temp >> first;
+               if(first == "Set-Cookie:"){
+                  string latter = line.substr(first.length() + 1);
+                  stringstream last(latter);
+                  string trueCookiePiece = "";
+                  getline(last, trueCookiePiece, ';');
+                  myCookie << trueCookiePiece << ";" << endl;
+               }
+            }
          }
       }
    }
