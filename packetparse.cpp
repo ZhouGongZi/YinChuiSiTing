@@ -660,6 +660,8 @@ int main(int argc, char *argv[]){
          myMail << endl;
 
          // ========== write the true message content to file ========== //
+
+         myMail << "header and message: " << endl;
          bool hasData = 0;
          for(auto i : init[init_key]){
             string payload = i.second.second;
@@ -683,8 +685,6 @@ int main(int argc, char *argv[]){
             if(breakOut) break;
          }
       }
-
-
    }
 
    return 0;
