@@ -645,8 +645,8 @@ int main(int argc, char *argv[]){
          string filename = connNum + ".mail";
          ofstream myMail (filename, ios::out | ios::app | ios::binary);
 
-         myMail << "IP address of Sender: " << initStr << endl;
-         myMail << "IP address of Receiver: " << respStr << endl;
+         myMail << "IP address of initiator: " << initStr << endl;
+         myMail << "IP address of responder: " << respStr << endl;
 
          myMail << endl;
 
@@ -657,6 +657,7 @@ int main(int argc, char *argv[]){
 
          myMail << "sender address: " << sender << endl;
          myMail << "receiver address: " << receiver << endl;
+         myMail << endl;
 
          // ========== write the true message content to file ========== //
          bool hasData = 0;
@@ -664,20 +665,23 @@ int main(int argc, char *argv[]){
             string payload = i.second.second;
             string line = "";
             stringstream payloadStr(payload);
+            bool breakOut = 0;
             while(getline(payloadStr, line)){
-               if(line.substr(0, 4) == allCapitalize("DATA")){
-                  cout << "length os data is : " << line.length() << endl;
-                  cout << "data is : " << line << endl;
+               int leng = line.length();
+
+               if(line.substr(0, leng - 1) == allCapitalize("DATA")){
                   hasData = 1;
                }
-               else if(line.substr(0, 1) == "." && line.length() == 2){
+               else if(line.substr(0, leng - 1) == "."){
+                  breakOut = 1;
                   break;
                }
+               else if(hasData){
+                  myMail << line << endl;
+               }
             }
-
+            if(breakOut) break;
          }
-
-
       }
 
 
