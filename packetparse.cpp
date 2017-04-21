@@ -53,6 +53,29 @@ int getSemiPos(string src){
    return -1;
 }
 
+string getRespondCode(string str){
+   return str.substr(0, 3);
+}
+
+string allCapitalize(string str){
+   for(int i=0; i<str.length(); ++i){
+      if(str[i] >= 'a' && str[i] <= 'z')
+         str[i] = 'A' + str[i] - 'a';
+   }
+   return str;
+}
+
+string extractMailAddress(string str){
+   string addrRes = "";
+   bool hasLeft = 0;
+   for(int i=0; i<str.length(); ++i){
+      if(str[i] == '<') hasLeft = 1;
+      else if(str[i] == '>') hasLeft = 0;
+      else if(hasLeft) addrRes += str[i];
+   }
+   return addrRes;
+
+}
 
 int sameSession(string s1, string s2){
    if(s1 == s2) return 1;
@@ -582,23 +605,77 @@ int main(int argc, char *argv[]){
          stringstream iStr(init_key);
          string initStr = "";
          string respStr = "";
-         string seqNum = ""; //specified for creating file
+         string connNum = ""; //specified for creating file
          getline(iStr, initStr, '#');
          getline(iStr, respStr, '#');
-         getline(iStr, seqNum, '#');
+         getline(iStr, connNum, '#');
 
          string respPort = ""; //used to 
          stringstream istrResp(respStr);
          getline(istrResp, respPort, ':');
          getline(istrResp, respPort, ':');
 
-         if(respPort != "25" || respPort != "587") continue; //not smtp service
+         if(respPort != "25" && respPort != "587") continue; //not smtp service
+
          // ========== whether it is accpted: ========== //
-         for(auto ){
+         bool acpted = 0;
+         bool hasStart = 0;
+         for(auto i : resp[resp_key]){
+            string respondCode = getRespondCode(i.second.second);
+            if(hasStart && (respondCode == "250")){
+               acpted = 1;
+               break;
+            }
+            else if(respondCode == "354") hasStart = 1;
+         }
+         // ========== initialize the sender and receiver ==========//
+         string sender = "";
+         string receiver = "";
+         for(auto i : init[init_key]){
+            string cmd = (i.second.second).substr(0, 4);
+            if(cmd == allCapitalize("MAIL")){
+               sender = extractMailAddress(i.second.second);
+            }
+            else if(cmd == allCapitalize("RCPT")){
+               receiver = extractMailAddress(i.second.second);
+            }
+         }  
+
+         // ========== start to write to the file ========== //
+         string filename = connNum + ".mail";
+         ofstream myMail (filename, ios::out | ios::app | ios::binary);
+
+         myMail << "IP address of Sender: " << initStr << endl;
+         myMail << "IP address of Receiver: " << respStr << endl;
+
+         myMail << endl;
+
+         if(acpted) myMail << "the message is accepted" << endl;
+         else myMail << "the message is rejected" << endl;
+
+         myMail << endl;
+
+         myMail << "sender address: " << sender << endl;
+         myMail << "receiver address: " << receiver << endl;
+
+         // ========== write the true message content to file ========== //
+         bool hasData = 0;
+         for(auto i : init[init_key]){
+            string payload = i.second.second;
+            string line = "";
+            stringstream payloadStr(payload);
+            while(getline(payloadStr, line)){
+               if(line.substr(0, 4) == allCapitalize("DATA")){
+                  cout << "length os data is : " << line.length() << endl;
+                  cout << "data is : " << line << endl;
+                  hasData = 1;
+               }
+               else if(line.substr(0, 1) == "." && line.length() == 2){
+                  break;
+               }
+            }
 
          }
-
-
 
 
       }
